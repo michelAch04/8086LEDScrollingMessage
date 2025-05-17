@@ -1,0 +1,249 @@
+Microsoft (R) Macro Assembler Version 6.14.8444		    05/17/25 11:15:42
+finalbonus_proteus.asm					     Page 1 - 1
+
+
+				   .MODEL SMALL
+				   .8086
+				   .stack
+ 0000				   .code
+				   .startup
+ = 0000				PORTA EQU 00H
+ = 0002				PORTB EQU 02H
+ = 0006				CONTROL_WORD EQU 06H
+
+ = 000B				CHARACTER_COUNT EQU 0BH
+ = 0005				COL_COUNT EQU 05H
+ = 0080				DISPLAY_START EQU 80H
+
+				org 0100H
+ 0100  90			Nop
+ 0101  90			nop
+ 0102  90			nop
+ 0103  90			nop
+ 0104  90			nop
+ 0105  90			nop
+ 0106				INITIALIZE_8255:
+ 0106  B0 80			   MOV AL, 80H                         ; Control word, Port A/Port B as outputs
+ 0108  E6 06			   OUT CONTROL_WORD, AL
+
+ 010A				START:
+ 010A  8C C8			   MOV AX, CS
+ 010C  8E D8			   MOV DS, AX
+				   
+ 010E  B1 00			   MOV CL, 00H                         ; nb of character index 1->CHARACTER_COUNT
+ 0110  BE 022C R		   MOV SI, OFFSET LED_MATRIX           ; point SI to start of display
+
+ 0113				WRITE_WORD:
+ 0113  B5 00			   MOV CH, 00H                         ; character column pointer 1->5
+ 0115  B2 00			   MOV DL, 00H                         ; global column pointer 1->128
+				   
+ 0117  BB 0221 R		   MOV BX, OFFSET MSG_TABLE            ; pointer to currect character
+ 011A  03 D9			   ADD BX, CX                          ; point register to current character
+				   
+ 011C  BF 019A R		   MOV DI, OFFSET LOOKUP1              ; initialize lookup table pointer
+ 011F  8A 07			   MOV AL, [BX]
+ 0121  03 F8			   ADD DI, AX                          ; point it to columns of current character
+ 0123				   INTERCHARACTER_LOOP:
+ 0123  8A 05			      MOV AL, [DI]                     ; get column i of character j
+ 0125  88 04			      MOV [SI], AL                     ; write it in display matrix
+				      
+ 0127  83 C7 1B			      ADD DI, 1BH                      ; move to next lookup table same character
+ 012A  FE C5			      INC CH                           ; increment character column pointer
+ 012C  46			      INC SI
+ 012D  80 FD 05			      CMP CH, COL_COUNT                ; check if all 5 columns  processed
+ 0130  75 F1			      JNZ INTERCHARACTER_LOOP          ; continue intercharcter_loop if incomplete
+
+ 0132  FE C1			   INC CL                              ; move to next character
+ 0134  80 F9 0B			   CMP CL, CHARACTER_COUNT             ; check if all characters processed
+ 0137  75 DA			   JNZ WRITE_WORD                      ; if notprocessed restart
+
+ 0139				SET_START:
+ 0139  B1 09			   MOV CL, 09H                         ; shift counter (8 at the start)
+ 013B				DISPLAY_UPTOMIDDLE:
+ 013B  BE 022C R		   MOV SI, OFFSET LED_MATRIX           ; start of display (initially empty display)
+ 013E  B8 0000			   MOV AX, 0000H                       ; reset just in case
+ 0141  B6 00			   MOV DH, 00H
+ 0143  B2 00			   MOV DL, 00H                         ; global column pointer 1->128
+ 0145  FE C9			   DEC CL                              ; shift one less bit
+				   
+ 0147				   DISPLAY_UTM_LOOP:
+ 0147  8B FE			      MOV DI, SI                       ; initialize pointer to current data
+ 0149  03 FA			      ADD DI, DX
+				      
+ 014B  8A C2			      MOV AL, DL                       ; current column to be selection
+ 014D  E6 02			      OUT PORTB, AL                    ; output column selection
+				  
+ 014F  8A 05			      MOV AL, [DI]                     ; get data from matrix
+ 0151  D2 E0			      SHL AL, CL                       ; shift bits (make message go down)
+ 0153  F6 D0			      NOT AL                           ; row is active low
+ 0155  E6 00			      OUT PORTA, AL                    ; output row data
+				      
+ 0157  E8 0152			      CALL DELAY                       ; call column delay
+				      
+ 015A  FE C2			      INC DL                           ; increment global column pointer
+ 015C  80 FA 80			      CMP DL, 80H                      ; check if all columns are processed
+ 015F  75 E6			      JNZ DISPLAY_UTM_LOOP             ; if not loop again
+				   
+ 0161  E8 0151			   CALL SCROLLING_DELAY                ; call scrolling delay
+ 0164  80 F9 00			   CMP CL, 00H                         ; check if messsage is fully displayed
+ 0167  75 D2			   JNZ DISPLAY_UPTOMIDDLE              ; if not loop again
+
+ 0169				DISPLAY_MIDDLETODOWN:
+ 0169  BE 022C R		   MOV SI, OFFSET LED_MATRIX           ; start of display (initially empty display)
+ 016C  B8 0000			   MOV AX, 0000H                       ; reset just in case
+ 016F  B6 00			   MOV DH, 00H
+ 0171  B2 00			   MOV DL, 00H                         ; global column pointer 1->128
+				   
+ 0173				   DISPLAY_MTD_LOOP:
+ 0173  8B FE			      MOV DI, SI                       ; initialize pointer to current data
+ 0175  03 FA			      ADD DI, DX
+				      
+ 0177  8A C2			      MOV AL, DL                       ; current column to be selection
+ 0179  E6 02			      OUT PORTB, AL                    ; output column selection
+				  
+ 017B  8A 05			      MOV AL, [DI]                     ; get data from matrix
+ 017D  D2 E8			      SHR AL, CL                       ; shift bits (make message go down)
+ 017F  F6 D0			      NOT AL                           ; row is active low
+ 0181  E6 00			      OUT PORTA, AL                    ; output row data
+				      
+ 0183  E8 0126			      CALL DELAY                       ; call column delay
+				      
+ 0186  FE C2			      INC DL                           ; increment global column pointer
+ 0188  80 FA 80			      CMP DL, 80H                      ; check if all columns are processed
+ 018B  75 E6			      JNZ DISPLAY_MTD_LOOP             ; if not loop again
+				   
+ 018D  E8 0125			   CALL SCROLLING_DELAY                ; call scrolling delay
+ 0190  FE C1			   INC CL                              ; shift one more bit
+ 0192  80 F9 09			   CMP CL, 09H                         ; check if messsage is fully displayed
+ 0195  75 D2			   JNZ DISPLAY_MIDDLETODOWN            ; if not loop again
+				   
+ 0197  EB A0			   JMP SET_START
+ 0199  F4			HLT
+
+				; LOOKUP TABLES (5x8 character representation, each with spacing, size=27) 
+				; Columns 1 of characters 
+ 019A 7F 7F 7F 7F 7F 7F		LOOKUP1 DB 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 00H, 3H, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 31H, 00H, 7FH, 7FH, 7FH, 77H, 60H, 43H, 00H
+       7F 7F 00 03 7F 7F
+       7F 7F 7F 7F 7F 7F
+       31 00 7F 7F 7F 77
+       60 43 00
+
+				; Columns 2 of characters
+ 01B5 48 49 41 41 49 48		LOOKUP2 DB 48H, 49H, 41H, 41H, 49H, 48H, 41H, 8H, 41H, 41H, 14H, 1H, 20H, 20H, 41H, 48H, 42H, 4CH, 49H, 40H, 01H, 01H, 02H, 08H, 10H, 45H, 00H
+       41 08 41 41 14 01
+       20 20 41 48 42 4C
+       49 40 01 01 02 08
+       10 45 00
+
+				; Columns 3 of characters
+ 01D0 48 49 41 41 49 48		LOOKUP3 DB 48H, 49H, 41H, 41H, 49H, 48H, 49H, 08H, 7FH, 7FH, 22H, 01H, 20H, 20H, 41H, 48H, 46H, 4AH, 49H, 7FH, 01H, 01H, 02H, 08H, 1FH, 59H, 00H
+       49 08 7F 7F 22 01
+       20 20 41 48 46 4A
+       49 7F 01 01 02 08
+       1F 59 00
+
+				; Columns 4 of characters
+ 01EB 7F 36 41 3E 41 40		LOOKUP4 DB 7FH, 36H, 41H, 3EH, 41H, 40H, 4FH, 7FH, 41H, 40H, 41H, 01H, 7FH, 1FH, 7FH, 78H, 7FH, 79H, 46H, 40H, 7FH, 7EH, 7FH, 77H, 60H, 61H, 00H
+       4F 7F 41 40 41 01
+       7F 1F 7F 78 7F 79
+       46 40 7F 7E 7F 77
+       60 61 00
+
+				; Columns 5 of characters for spacing
+ 0206 00 00 00 00 00 00		LOOKUP5 DB 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H 
+       00 00 00 00 00 00
+       00 00 00 00 00 00
+       00 00 00 00 00 00
+       00 00 00
+
+				; table for message characters (offset)
+ 0221 08 1A 0B 0E 15 04		MSG_TABLE DB 08H, 1AH, 0BH, 0EH, 15H, 04H, 1AH, 14H, 12H, 04H, 0AH
+       1A 14 12 04 0A
+
+
+				;LED MATRIX DISPLAY (128 x 3 = 384, we will be outputting from 128 to 256)
+ 022C  0080 [			LED_MATRIX DB 128 DUP(00H)
+        00
+       ]
+
+ 02AC				DELAY:
+ 02AC  51			   PUSH CX
+ 02AD  B9 0006			   MOV CX, 06H
+ 02B0				   DELAY_LOOP:
+ 02B0  90			      NOP
+ 02B1  E2 FD			      LOOP DELAY_LOOP
+ 02B3  59			   POP CX
+ 02B4  C3			   RET
+
+ 02B5				SCROLLING_DELAY:
+ 02B5  51			   PUSH CX
+ 02B6  B9 0001			   MOV CX, 0001H
+ 02B9				   SCROLLING_DELAY_LOOP:
+ 02B9  90			      NOP
+ 02BA  E2 FD			      LOOP SCROLLING_DELAY_LOOP
+ 02BC  59			   POP CX
+ 02BD  C3			   RET
+				      
+				      
+
+ 0000				   .data
+				   END
+Microsoft (R) Macro Assembler Version 6.14.8444		    05/17/25 11:15:42
+finalbonus_proteus.asm					     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+DGROUP . . . . . . . . . . . . .	GROUP
+_DATA  . . . . . . . . . . . . .	16 Bit	 0000	  Word	  Public  'DATA'	
+STACK  . . . . . . . . . . . . .	16 Bit	 0400	  Para	  Stack	  'STACK'	 
+_TEXT  . . . . . . . . . . . . .	16 Bit	 02BE	  Word	  Public  'CODE'	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 0000h	 
+@DataSize  . . . . . . . . . . .	Number	 0000h	 
+@Interface . . . . . . . . . . .	Number	 0000h	 
+@Model . . . . . . . . . . . . .	Number	 0002h	 
+@Startup . . . . . . . . . . . .	L Near	 0000	  _TEXT	
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 DGROUP
+@fardata?  . . . . . . . . . . .	Text   	 FAR_BSS
+@fardata . . . . . . . . . . . .	Text   	 FAR_DATA
+@stack . . . . . . . . . . . . .	Text   	 DGROUP
+CHARACTER_COUNT  . . . . . . . .	Number	 000Bh	 
+COL_COUNT  . . . . . . . . . . .	Number	 0005h	 
+CONTROL_WORD . . . . . . . . . .	Number	 0006h	 
+DELAY_LOOP . . . . . . . . . . .	L Near	 02B0	  _TEXT	
+DELAY  . . . . . . . . . . . . .	L Near	 02AC	  _TEXT	
+DISPLAY_MIDDLETODOWN . . . . . .	L Near	 0169	  _TEXT	
+DISPLAY_MTD_LOOP . . . . . . . .	L Near	 0173	  _TEXT	
+DISPLAY_START  . . . . . . . . .	Number	 0080h	 
+DISPLAY_UPTOMIDDLE . . . . . . .	L Near	 013B	  _TEXT	
+DISPLAY_UTM_LOOP . . . . . . . .	L Near	 0147	  _TEXT	
+INITIALIZE_8255  . . . . . . . .	L Near	 0106	  _TEXT	
+INTERCHARACTER_LOOP  . . . . . .	L Near	 0123	  _TEXT	
+LED_MATRIX . . . . . . . . . . .	Byte	 022C	  _TEXT	
+LOOKUP1  . . . . . . . . . . . .	Byte	 019A	  _TEXT	
+LOOKUP2  . . . . . . . . . . . .	Byte	 01B5	  _TEXT	
+LOOKUP3  . . . . . . . . . . . .	Byte	 01D0	  _TEXT	
+LOOKUP4  . . . . . . . . . . . .	Byte	 01EB	  _TEXT	
+LOOKUP5  . . . . . . . . . . . .	Byte	 0206	  _TEXT	
+MSG_TABLE  . . . . . . . . . . .	Byte	 0221	  _TEXT	
+PORTA  . . . . . . . . . . . . .	Number	 0000h	 
+PORTB  . . . . . . . . . . . . .	Number	 0002h	 
+SCROLLING_DELAY_LOOP . . . . . .	L Near	 02B9	  _TEXT	
+SCROLLING_DELAY  . . . . . . . .	L Near	 02B5	  _TEXT	
+SET_START  . . . . . . . . . . .	L Near	 0139	  _TEXT	
+START  . . . . . . . . . . . . .	L Near	 010A	  _TEXT	
+WRITE_WORD . . . . . . . . . . .	L Near	 0113	  _TEXT	
+
+	   0 Warnings
+	   0 Errors

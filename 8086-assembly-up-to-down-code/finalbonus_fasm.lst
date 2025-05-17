@@ -1,0 +1,168 @@
+                                                                PORTA EQU 00H
+                                                                PORTB EQU 02H
+                                                                CONTROL_WORD EQU 06H
+                                                                
+                                                                CHARACTER_COUNT EQU 0BH
+                                                                COL_COUNT EQU 05H
+                                                                DISPLAY_START EQU 80H
+                                                                
+                                                                org 0100H
+00000000: 90                                                    Nop
+00000001: 90                                                    nop
+00000002: 90                                                    nop
+00000003: 90                                                    nop
+00000004: 90                                                    nop
+00000005: 90                                                    nop
+                                                                INITIALIZE_8255:
+00000006: B0 80                                                    MOV AL, 80H                         ; Control word, Port A/Port B as outputs
+00000008: E6 06                                                    OUT CONTROL_WORD, AL
+                                                                
+                                                                START:
+0000000A: 8C C8                                                    MOV AX, CS
+0000000C: 8E D8                                                    MOV DS, AX
+                                                                   
+0000000E: B1 00                                                    MOV CL, 00H                         ; nb of character index 1->CHARACTER_COUNT
+00000010: BE 2C 02                                                 MOV SI,  LED_MATRIX           ; point SI to start of display
+                                                                
+                                                                WRITE_WORD:
+00000013: B5 00                                                    MOV CH, 00H                         ; character column pointer 1->5
+00000015: B2 00                                                    MOV DL, 00H                         ; global column pointer 1->128
+                                                                   
+00000017: BB 21 02                                                 MOV BX,  MSG_TABLE            ; pointer to currect character
+0000001A: 01 CB                                                    ADD BX, CX                          ; point register to current character
+                                                                   
+0000001C: BF 9A 01                                                 MOV DI,  LOOKUP1              ; initialize lookup table pointer
+0000001F: 8A 07                                                    MOV AL, [BX]
+00000021: 01 C7                                                    ADD DI, AX                          ; point it to columns of current character
+                                                                   INTERCHARACTER_LOOP:
+00000023: 8A 05                                                       MOV AL, [DI]                     ; get column i of character j
+00000025: 88 04                                                       MOV [SI], AL                     ; write it in display matrix
+                                                                      
+00000027: 83 C7 1B                                                    ADD DI, 1BH                      ; move to next lookup table same character
+0000002A: FE C5                                                       INC CH                           ; increment character column pointer
+0000002C: 46                                                          INC SI
+0000002D: 80 FD 05                                                    CMP CH, COL_COUNT                ; check if all 5 columns  processed
+00000030: 75 F1                                                       JNZ INTERCHARACTER_LOOP          ; continue intercharcter_loop if incomplete
+                                                                
+00000032: FE C1                                                    INC CL                              ; move to next character
+00000034: 80 F9 0B                                                 CMP CL, CHARACTER_COUNT             ; check if all characters processed
+00000037: 75 DA                                                    JNZ WRITE_WORD                      ; if notprocessed restart
+                                                                
+                                                                SET_START:
+00000039: B1 09                                                    MOV CL, 09H                         ; shift counter (8 at the start)
+                                                                DISPLAY_UPTOMIDDLE:
+0000003B: BE 2C 02                                                 MOV SI,  LED_MATRIX           ; start of display (initially empty display)
+0000003E: B8 00 00                                                 MOV AX, 0000H                       ; reset just in case
+00000041: B6 00                                                    MOV DH, 00H
+00000043: B2 00                                                    MOV DL, 00H                         ; global column pointer 1->128
+00000045: FE C9                                                    DEC CL                              ; shift one less bit
+                                                                   
+                                                                   DISPLAY_UTM_LOOP:
+00000047: 89 F7                                                       MOV DI, SI                       ; initialize pointer to current data
+00000049: 01 D7                                                       ADD DI, DX
+                                                                      
+0000004B: 88 D0                                                       MOV AL, DL                       ; current column to be selection
+0000004D: E6 02                                                       OUT PORTB, AL                    ; output column selection
+                                                                  
+0000004F: 8A 05                                                       MOV AL, [DI]                     ; get data from matrix
+00000051: D2 E0                                                       SHL AL, CL                       ; shift bits (make message go down)
+00000053: F6 D0                                                       NOT AL                           ; row is active low
+00000055: E6 00                                                       OUT PORTA, AL                    ; output row data
+                                                                      
+00000057: E8 52 01                                                    CALL DELAY                       ; call column delay
+                                                                      
+0000005A: FE C2                                                       INC DL                           ; increment global column pointer
+0000005C: 80 FA 80                                                    CMP DL, 80H                      ; check if all columns are processed
+0000005F: 75 E6                                                       JNZ DISPLAY_UTM_LOOP             ; if not loop again
+                                                                   
+00000061: E8 51 01                                                 CALL SCROLLING_DELAY                ; call scrolling delay
+00000064: 80 F9 00                                                 CMP CL, 00H                         ; check if messsage is fully displayed
+00000067: 75 D2                                                    JNZ DISPLAY_UPTOMIDDLE              ; if not loop again
+                                                                
+                                                                DISPLAY_MIDDLETODOWN:
+00000069: BE 2C 02                                                 MOV SI,  LED_MATRIX           ; start of display (initially empty display)
+0000006C: B8 00 00                                                 MOV AX, 0000H                       ; reset just in case
+0000006F: B6 00                                                    MOV DH, 00H
+00000071: B2 00                                                    MOV DL, 00H                         ; global column pointer 1->128
+                                                                   
+                                                                   DISPLAY_MTD_LOOP:
+00000073: 89 F7                                                       MOV DI, SI                       ; initialize pointer to current data
+00000075: 01 D7                                                       ADD DI, DX
+                                                                      
+00000077: 88 D0                                                       MOV AL, DL                       ; current column to be selection
+00000079: E6 02                                                       OUT PORTB, AL                    ; output column selection
+                                                                  
+0000007B: 8A 05                                                       MOV AL, [DI]                     ; get data from matrix
+0000007D: D2 E8                                                       SHR AL, CL                       ; shift bits (make message go down)
+0000007F: F6 D0                                                       NOT AL                           ; row is active low
+00000081: E6 00                                                       OUT PORTA, AL                    ; output row data
+                                                                      
+00000083: E8 26 01                                                    CALL DELAY                       ; call column delay
+                                                                      
+00000086: FE C2                                                       INC DL                           ; increment global column pointer
+00000088: 80 FA 80                                                    CMP DL, 80H                      ; check if all columns are processed
+0000008B: 75 E6                                                       JNZ DISPLAY_MTD_LOOP             ; if not loop again
+                                                                   
+0000008D: E8 25 01                                                 CALL SCROLLING_DELAY                ; call scrolling delay
+00000090: FE C1                                                    INC CL                              ; shift one more bit
+00000092: 80 F9 09                                                 CMP CL, 09H                         ; check if messsage is fully displayed
+00000095: 75 D2                                                    JNZ DISPLAY_MIDDLETODOWN            ; if not loop again
+                                                                   
+00000097: EB A0                                                    JMP SET_START
+00000099: F4                                                    HLT
+                                                                
+                                                                ; LOOKUP TABLES (5x8 character representation, each with spacing, size=27) 
+                                                                ; Columns 1 of characters 
+0000009A: 7F 7F 7F 7F 7F 7F 7F 7F 00 03 7F 7F 7F 7F 7F 7F       LOOKUP1 DB 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 00H, 3H, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 31H, 00H, 7FH, 7FH, 7FH, 77H, 60H, 43H, 00H
+          7F 7F 31 00 7F 7F 7F 77 60 43 00                      
+                                                                
+                                                                ; Columns 2 of characters
+000000B5: 48 49 41 41 49 48 41 08 41 41 14 01 20 20 41 48       LOOKUP2 DB 48H, 49H, 41H, 41H, 49H, 48H, 41H, 8H, 41H, 41H, 14H, 1H, 20H, 20H, 41H, 48H, 42H, 4CH, 49H, 40H, 01H, 01H, 02H, 08H, 10H, 45H, 00H
+          42 4C 49 40 01 01 02 08 10 45 00                      
+                                                                
+                                                                ; Columns 3 of characters
+000000D0: 48 49 41 41 49 48 49 08 7F 7F 22 01 20 20 41 48       LOOKUP3 DB 48H, 49H, 41H, 41H, 49H, 48H, 49H, 08H, 7FH, 7FH, 22H, 01H, 20H, 20H, 41H, 48H, 46H, 4AH, 49H, 7FH, 01H, 01H, 02H, 08H, 1FH, 59H, 00H
+          46 4A 49 7F 01 01 02 08 1F 59 00                      
+                                                                
+                                                                ; Columns 4 of characters
+000000EB: 7F 36 41 3E 41 40 4F 7F 41 40 41 01 7F 1F 7F 78       LOOKUP4 DB 7FH, 36H, 41H, 3EH, 41H, 40H, 4FH, 7FH, 41H, 40H, 41H, 01H, 7FH, 1FH, 7FH, 78H, 7FH, 79H, 46H, 40H, 7FH, 7EH, 7FH, 77H, 60H, 61H, 00H
+          7F 79 46 40 7F 7E 7F 77 60 61 00                      
+                                                                
+                                                                ; Columns 5 of characters for spacing
+00000106: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       LOOKUP5 DB 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H 
+          00 00 00 00 00 00 00 00 00 00 00                      
+                                                                
+                                                                ; table for message characters (offset)
+00000121: 08 1A 0B 0E 15 04 1A 14 12 04 0A                      MSG_TABLE DB 08H, 1AH, 0BH, 0EH, 15H, 04H, 1AH, 14H, 12H, 04H, 0AH
+                                                                
+                                                                
+                                                                ;LED MATRIX DISPLAY (128 x 3 = 384, we will be outputting from 128 to 256)
+0000012C: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       LED_MATRIX DB 128 DUP(00H)
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+          00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00       
+                                                                
+                                                                DELAY:
+000001AC: 51                                                       PUSH CX
+000001AD: B9 06 00                                                 MOV CX, 06H
+                                                                   DELAY_LOOP:
+000001B0: 90                                                          NOP
+000001B1: E2 FD                                                       LOOP DELAY_LOOP
+000001B3: 59                                                       POP CX
+000001B4: C3                                                       RET
+                                                                
+                                                                SCROLLING_DELAY:
+000001B5: 51                                                       PUSH CX
+000001B6: B9 01 00                                                 MOV CX, 0001H
+                                                                   SCROLLING_DELAY_LOOP:
+000001B9: 90                                                          NOP
+000001BA: E2 FD                                                       LOOP SCROLLING_DELAY_LOOP
+000001BC: 59                                                       POP CX
+000001BD: C3                                                       RET
+                                                                      
+                                                                      
+                                                                

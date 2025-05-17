@@ -1,0 +1,163 @@
+   .MODEL SMALL
+   .8086
+   .stack
+   .code
+   .startup
+PORTA EQU 00H
+PORTB EQU 02H
+CONTROL_WORD EQU 06H
+
+CHARACTER_COUNT EQU 0BH
+COL_COUNT EQU 05H
+DISPLAY_START EQU 80H
+
+org 0100H
+Nop
+nop
+nop
+nop
+nop
+nop
+INITIALIZE_8255:
+   MOV AL, 80H                         ; Control word, Port A/Port B as outputs
+   OUT CONTROL_WORD, AL
+
+START:
+   MOV AX, CS
+   MOV DS, AX
+   
+   MOV CL, 00H                         ; nb of character index 1->CHARACTER_COUNT
+   MOV SI, OFFSET LED_MATRIX           ; point SI to start of display
+
+WRITE_WORD:
+   MOV CH, 00H                         ; character column pointer 1->5
+   MOV DL, 00H                         ; global column pointer 1->128
+   
+   MOV BX, OFFSET MSG_TABLE            ; pointer to currect character
+   ADD BX, CX                          ; point register to current character
+   
+   MOV DI, OFFSET LOOKUP1              ; initialize lookup table pointer
+   MOV AL, [BX]
+   ADD DI, AX                          ; point it to columns of current character
+   INTERCHARACTER_LOOP:
+      MOV AL, [DI]                     ; get column i of character j
+      MOV [SI], AL                     ; write it in display matrix
+      
+      ADD DI, 1BH                      ; move to next lookup table same character
+      INC CH                           ; increment character column pointer
+      INC SI
+      CMP CH, COL_COUNT                ; check if all 5 columns  processed
+      JNZ INTERCHARACTER_LOOP          ; continue intercharcter_loop if incomplete
+
+   INC CL                              ; move to next character
+   CMP CL, CHARACTER_COUNT             ; check if all characters processed
+   JNZ WRITE_WORD                      ; if notprocessed restart
+
+SET_START:
+   MOV CL, 09H                         ; shift counter (8 at the start)
+DISPLAY_UPTOMIDDLE:
+   MOV SI, OFFSET LED_MATRIX           ; start of display (initially empty display)
+   MOV AX, 0000H                       ; reset just in case
+   MOV DH, 00H
+   MOV DL, 00H                         ; global column pointer 1->128
+   DEC CL                              ; shift one less bit
+   
+   DISPLAY_UTM_LOOP:
+      MOV DI, SI                       ; initialize pointer to current data
+      ADD DI, DX
+      
+      MOV AL, DL                       ; current column to be selection
+      OUT PORTB, AL                    ; output column selection
+  
+      MOV AL, [DI]                     ; get data from matrix
+      SHL AL, CL                       ; shift bits (make message go down)
+      NOT AL                           ; row is active low
+      OUT PORTA, AL                    ; output row data
+      
+      CALL DELAY                       ; call column delay
+      
+      INC DL                           ; increment global column pointer
+      CMP DL, 80H                      ; check if all columns are processed
+      JNZ DISPLAY_UTM_LOOP             ; if not loop again
+   
+   CALL SCROLLING_DELAY                ; call scrolling delay
+   CMP CL, 00H                         ; check if messsage is fully displayed
+   JNZ DISPLAY_UPTOMIDDLE              ; if not loop again
+
+DISPLAY_MIDDLETODOWN:
+   MOV SI, OFFSET LED_MATRIX           ; start of display (initially empty display)
+   MOV AX, 0000H                       ; reset just in case
+   MOV DH, 00H
+   MOV DL, 00H                         ; global column pointer 1->128
+   
+   DISPLAY_MTD_LOOP:
+      MOV DI, SI                       ; initialize pointer to current data
+      ADD DI, DX
+      
+      MOV AL, DL                       ; current column to be selection
+      OUT PORTB, AL                    ; output column selection
+  
+      MOV AL, [DI]                     ; get data from matrix
+      SHR AL, CL                       ; shift bits (make message go down)
+      NOT AL                           ; row is active low
+      OUT PORTA, AL                    ; output row data
+      
+      CALL DELAY                       ; call column delay
+      
+      INC DL                           ; increment global column pointer
+      CMP DL, 80H                      ; check if all columns are processed
+      JNZ DISPLAY_MTD_LOOP             ; if not loop again
+   
+   CALL SCROLLING_DELAY                ; call scrolling delay
+   INC CL                              ; shift one more bit
+   CMP CL, 09H                         ; check if messsage is fully displayed
+   JNZ DISPLAY_MIDDLETODOWN            ; if not loop again
+   
+   JMP SET_START
+HLT
+
+; LOOKUP TABLES (5x8 character representation, each with spacing, size=27) 
+; Columns 1 of characters 
+LOOKUP1 DB 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 00H, 3H, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 7FH, 31H, 00H, 7FH, 7FH, 7FH, 77H, 60H, 43H, 00H
+
+; Columns 2 of characters
+LOOKUP2 DB 48H, 49H, 41H, 41H, 49H, 48H, 41H, 8H, 41H, 41H, 14H, 1H, 20H, 20H, 41H, 48H, 42H, 4CH, 49H, 40H, 01H, 01H, 02H, 08H, 10H, 45H, 00H
+
+; Columns 3 of characters
+LOOKUP3 DB 48H, 49H, 41H, 41H, 49H, 48H, 49H, 08H, 7FH, 7FH, 22H, 01H, 20H, 20H, 41H, 48H, 46H, 4AH, 49H, 7FH, 01H, 01H, 02H, 08H, 1FH, 59H, 00H
+
+; Columns 4 of characters
+LOOKUP4 DB 7FH, 36H, 41H, 3EH, 41H, 40H, 4FH, 7FH, 41H, 40H, 41H, 01H, 7FH, 1FH, 7FH, 78H, 7FH, 79H, 46H, 40H, 7FH, 7EH, 7FH, 77H, 60H, 61H, 00H
+
+; Columns 5 of characters for spacing
+LOOKUP5 DB 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H, 00H 
+
+; table for message characters (offset)
+MSG_TABLE DB 08H, 1AH, 0BH, 0EH, 15H, 04H, 1AH, 14H, 12H, 04H, 0AH
+
+
+;LED MATRIX DISPLAY (128 x 3 = 384, we will be outputting from 128 to 256)
+LED_MATRIX DB 128 DUP(00H)
+
+DELAY:
+   PUSH CX
+   MOV CX, 06H
+   DELAY_LOOP:
+      NOP
+      LOOP DELAY_LOOP
+   POP CX
+   RET
+
+SCROLLING_DELAY:
+   PUSH CX
+   MOV CX, 0001H
+   SCROLLING_DELAY_LOOP:
+      NOP
+      LOOP SCROLLING_DELAY_LOOP
+   POP CX
+   RET
+      
+      
+
+   .data
+   END
