@@ -5,3 +5,5 @@ The project is about a Proteus portable 7.10 simulation of a scrolling message o
 It is coded using the assembly language.
 We have two types of scrolling: right to left (8086-assembly-code) and up to down (8086-assembly-up-to-down-code).
 I can't figure out how to solve the flickering and delay issues yet, so if anyone knows how to solve the issues, don't hesitate!
+
+Happy Coding!
